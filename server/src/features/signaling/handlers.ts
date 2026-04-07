@@ -20,9 +20,14 @@ export const registerHandlers = (io: Server, socket: Socket) => {
       return;
     }
 
-    const { userName, avatar } = result.data;
-    const room = roomManager.createRoom(socket.id, userName, avatar);
+    const { userName, avatar, roomId } = result.data;
+    const room = roomManager.createRoom(socket.id, userName, avatar, roomId);
     
+    if (!room) {
+      socket.emit(SOCKET_EVENTS.ERROR, { message: 'Room name is already in use.' });
+      return;
+    }
+
     socket.join(room.id);
     socket.emit(SOCKET_EVENTS.ROOM_CREATED, room);
     console.log(`Room created: ${room.id} by ${userName}`);
@@ -72,7 +77,8 @@ export const registerHandlers = (io: Server, socket: Socket) => {
     const room = roomManager.moveArea(socket.id, payload.area);
     if (!room) return;
 
-    io.to(room.id).emit(SOCKET_EVENTS.AREA_MOVED, { userId: socket.id, area: payload.area });
+    // Send full members list so clients can update isTeamAdmin correctly
+    io.to(room.id).emit(SOCKET_EVENTS.AREA_MOVED, { userId: socket.id, area: payload.area, members: room.members });
   });
 
   socket.on(SOCKET_EVENTS.KNOCK_REQUEST, (payload: any) => {
@@ -156,6 +162,27 @@ export const registerHandlers = (io: Server, socket: Socket) => {
     socket.to(payload.to).emit(SOCKET_EVENTS.SIGNAL, {
       from: socket.id,
       signal: payload.signal
+    });
+  });
+
+  socket.on(SOCKET_EVENTS.BACKCHANNEL, (payload: { signal: any }) => {
+    const roomId = roomManager.getRoomIdByUser(socket.id);
+    if (!roomId) return;
+    
+    const room = roomManager.getRoom(roomId);
+    if (!room) return;
+
+    const user = room.members.find(m => m.id === socket.id);
+    if (!user || !user.isTeamAdmin) return;
+
+    // Send only to other Team Admins and the Host
+    room.members.forEach(member => {
+      if (member.id !== socket.id && (member.isTeamAdmin || member.id === room.hostId)) {
+        io.to(member.id).emit(SOCKET_EVENTS.BACKCHANNEL, {
+          from: socket.id,
+          signal: payload.signal
+        });
+      }
     });
   });
 

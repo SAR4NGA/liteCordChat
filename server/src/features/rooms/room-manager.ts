@@ -5,14 +5,19 @@ export class RoomManager {
   private rooms: Map<string, Room> = new Map();
   private userToRoom: Map<string, string> = new Map();
 
-  createRoom(hostId: string, hostName: string, hostAvatar?: string): Room {
-    const roomId = uuidv4();
+  createRoom(hostId: string, hostName: string, hostAvatar?: string, customRoomId?: string): Room | null {
+    const roomId = customRoomId || uuidv4();
+    if (this.rooms.has(roomId)) {
+      return null;
+    }
+
     const host: User = {
       id: hostId,
       name: hostName,
       avatar: hostAvatar || '',
       roomArea: 'lobby',
-      isMuted: false
+      isMuted: false,
+      isTeamAdmin: false
     };
 
     const room: Room = {
@@ -37,7 +42,8 @@ export class RoomManager {
       name: userName,
       avatar: userAvatar || '',
       roomArea: 'lobby',
-      isMuted: false
+      isMuted: false,
+      isTeamAdmin: false
     };
 
     room.members.push(user);
@@ -55,13 +61,24 @@ export class RoomManager {
       return null;
     }
 
+    const leavingUser = room.members.find(m => m.id === userId);
     room.members = room.members.filter(m => m.id !== userId);
     this.userToRoom.delete(userId);
 
     if (room.members.length === 0) {
       this.rooms.delete(roomId);
-    } else if (room.hostId === userId) {
-      room.hostId = room.members[0].id;
+    } else {
+      if (room.hostId === userId) {
+        room.hostId = room.members[0].id;
+      }
+      
+      // Inheritance logic: If a Team Admin leaves, promote someone else in that area
+      if (leavingUser?.isTeamAdmin && leavingUser.roomArea !== 'lobby') {
+        const nextInArea = room.members.find(m => m.roomArea === leavingUser.roomArea);
+        if (nextInArea) {
+          nextInArea.isTeamAdmin = true;
+        }
+      }
     }
 
     return { roomId, members: room.members };
@@ -128,8 +145,28 @@ export class RoomManager {
     if (!room) return null;
 
     const member = room.members.find(m => m.id === userId);
-    if (member) {
-      member.roomArea = area;
+    if (!member) return null;
+
+    const oldArea = member.roomArea;
+    const oldIsAdmin = member.isTeamAdmin;
+    
+    member.roomArea = area;
+    member.isTeamAdmin = false; // Reset first
+
+    // Logic: if moving to a team area and no one is admin there, become admin
+    if (area !== 'lobby') {
+      const anyAdminInNewArea = room.members.some(m => m.roomArea === area && m.isTeamAdmin);
+      if (!anyAdminInNewArea) {
+        member.isTeamAdmin = true;
+      }
+    }
+
+    // Inheritance: if we were admin in old area, promote someone else there
+    if (oldIsAdmin && oldArea !== 'lobby') {
+      const nextInOldArea = room.members.find(m => m.roomArea === oldArea && m.id !== userId);
+      if (nextInOldArea) {
+        nextInOldArea.isTeamAdmin = true;
+      }
     }
 
     return room;

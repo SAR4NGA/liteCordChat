@@ -17,10 +17,10 @@ io.on(SOCKET_EVENTS.CONNECT, (socket) => {
   registerHandlers(io, socket);
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 if (process.env.NODE_ENV !== 'test') {
-  httpServer.listen(PORT, () => {
-    console.log(`Signaling server running on port ${PORT}`);
+  httpServer.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`Signaling server running on port ${PORT} (0.0.0.0)`);
   });
 }

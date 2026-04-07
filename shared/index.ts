@@ -8,6 +8,7 @@ export const UserSchema = z.object({
   avatar: z.string().optional(),
   roomArea: z.enum(['lobby', 'team-1', 'team-2']).default('lobby'),
   isMuted: z.boolean().default(false),
+  isTeamAdmin: z.boolean().default(false),
 });
 
 export type User = z.infer<typeof UserSchema>;
@@ -27,6 +28,7 @@ export type Room = z.infer<typeof RoomSchema>;
 export const CreateRoomSchema = z.object({
   userName: z.string().min(1),
   avatar: z.string().optional(),
+  roomId: z.string().optional(),
 });
 
 export type CreateRoomRequest = z.infer<typeof CreateRoomSchema>;
@@ -69,6 +71,7 @@ export const SOCKET_EVENTS = {
   LOCK_TOGGLED: 'lock_toggled',
   BURN_ROOM: 'burn_room',
   ROOM_BURNED: 'room_burned',
+  BACKCHANNEL: 'backchannel',
   ERROR: 'error'
 } as const;
 
