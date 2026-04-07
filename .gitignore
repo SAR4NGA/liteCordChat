@@ -39,3 +39,7 @@ Thumbs.db
 
 # BMad temporary artifacts
 _bmad-output/implementation-artifacts/stories/ # If you want to keep story specs, remove this
+
+# Local logs and zip
+docs.zip
+*.log
