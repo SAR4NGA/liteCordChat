@@ -26,7 +26,7 @@ interface SocketState {
   knockToken: string | null;
 }
 
-const SOCKET_URL = `${window.location.protocol}//${window.location.hostname}:3002`;
+const SOCKET_URL = import.meta.env.VITE_SERVER_URL || `${window.location.protocol}//${window.location.hostname}:3002`;
 
 export const useSocketStore = create<SocketState>((set, get) => ({
   socket: null,
