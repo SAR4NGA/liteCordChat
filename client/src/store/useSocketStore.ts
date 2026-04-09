@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_EVENTS, Room, User } from '@shared/index';
 import { sessionStore } from '../shared/sessionStore';
+import { SERVER_URL } from '../config';
 
 interface SocketState {
   socket: Socket | null;
@@ -26,7 +27,7 @@ interface SocketState {
   knockToken: string | null;
 }
 
-const SOCKET_URL = import.meta.env.VITE_SERVER_URL || `${window.location.protocol}//${window.location.hostname}:3002`;
+const SOCKET_URL = SERVER_URL;
 
 export const useSocketStore = create<SocketState>((set, get) => ({
   socket: null,
