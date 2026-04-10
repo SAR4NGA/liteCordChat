@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@litecordchat/shared": "*",
+    "@vitejs/plugin-react": "^6.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.14.0",
@@ -25,7 +26,7 @@
     "@vitejs/plugin-react-swc": "^3.5.0",
     "jsdom": "^29.0.2",
     "typescript": "^5.2.2",
-    "vite": "^5.3.1",
+    "vite": "^8.0.8",
     "vitest": "^4.1.3"
   }
 }
