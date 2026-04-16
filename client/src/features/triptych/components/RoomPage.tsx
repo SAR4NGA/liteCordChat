@@ -223,7 +223,7 @@ export function RoomPage() {
   // Cleanup AudioEngine on unmount
   useEffect(() => {
     return () => {
-      audioEngine.stop();
+      audioEngine.removeAllPeers();
     };
   }, []);
 

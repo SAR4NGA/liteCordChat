@@ -127,18 +127,12 @@ export class AudioEngine {
     this.teamGain.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.1);
   }
 
-  public stop() {
+  public removeAllPeers() {
     this.peerNodes.forEach((_, id) => this.removePeer(id));
-    if (this.audioCtx) {
-      // Close asynchronously but null the ref synchronously so any concurrent
-      // resume() / setupPeer() call treats the engine as un-initialized.
-      const ctx = this.audioCtx;
-      this.audioCtx = null;
-      this.masterGain = null;
-      this.teamGain = null;
-      this.backchannelGain = null;
-      ctx.close().catch(() => { });
-    }
+  }
+
+  public stop() {
+    this.removeAllPeers();
   }
 }
 
