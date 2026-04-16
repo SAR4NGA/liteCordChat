@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
 export const useMediaStream = () => {
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
   const [isMuted, setIsMuted] = useState(false);
@@ -20,7 +19,6 @@ export const useMediaStream = () => {
       mediaStream.getAudioTracks().forEach(track => {
         track.enabled = !isMuted;
       });
-      setStream(mediaStream);
       setError(null);
       return mediaStream;
     } catch (err) {
@@ -31,23 +29,12 @@ export const useMediaStream = () => {
   }, [isMuted]);
 
   const toggleMute = useCallback(() => {
-    setIsMuted(prev => {
-      const next = !prev;
-      if (stream) {
-        stream.getAudioTracks().forEach(track => {
-          track.enabled = !next;
-        });
-      }
-      return next;
-    });
-  }, [stream]);
+    setIsMuted(prev => !prev);
+  }, []);
 
   const stopStream = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-  }, [stream]);
+    // Stream state is now managed externally by useSocketStore
+  }, []);
 
-  return { stream, error, isMuted, startStream, stopStream, toggleMute };
+  return { error, isMuted, startStream, stopStream, toggleMute };
 };

@@ -130,7 +130,9 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       // Only clear room if it wasn't a deliberate client-side disconnect.
       // (Our disconnect() method sets socket=null before this fires.)
       if (get().socket) {
-        set({ room: null, pendingKnocks: [], knockStatus: 'idle', knockToken: null });
+        const ls = get().localStream;
+        ls?.getTracks().forEach(t => t.stop());
+        set({ localStream: null, room: null, pendingKnocks: [], knockStatus: 'idle', knockToken: null });
       }
     });
 
