@@ -14,11 +14,27 @@ function App() {
   }, [connect, disconnect]);
 
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/join/:roomId" element={<JoinInvite />} />
-      <Route path="/room/:roomId" element={<RoomPage />} />
-    </Routes>
+    <>
+      <div style={{
+        position: 'fixed',
+        top: '15px',
+        left: '20px',
+        color: 'var(--accent-gray)',
+        fontSize: '0.85rem',
+        fontWeight: 'bold',
+        zIndex: 9999,
+        fontFamily: 'var(--font-mono)',
+        letterSpacing: '0.05em',
+        opacity: 0.8
+      }}>
+        V 2.0
+      </div>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/join/:roomId" element={<JoinInvite />} />
+        <Route path="/room/:roomId" element={<RoomPage />} />
+      </Routes>
+    </>
   );
 }
 

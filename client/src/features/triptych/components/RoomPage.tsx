@@ -88,6 +88,30 @@ export function RoomPage() {
     }
   }, [room, isRejoining, navigate]);
 
+  // Global Audio Autoplay & Background Resurrection Handlers
+  useEffect(() => {
+    // 1. Browser Autoplay Policy: If the user did a hard refresh, AudioContext is suspended
+    //    until a user gesture. This listener catches any tap anywhere on the screen.
+    const handleInteraction = () => audioEngine.resume();
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('touchstart', handleInteraction, { passive: true });
+
+    // 2. Mobile Backgrounding: iOS Safari suspends Web Audio when the app is backgrounded.
+    //    We must explicitly resume it when the tab becomes visible again.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        audioEngine.resume();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   // Derive isMuted from room state for the current user
   const currentUser = room?.members.find(m => m.id === socket?.id);
   const isMuted = currentUser?.isMuted ?? false;

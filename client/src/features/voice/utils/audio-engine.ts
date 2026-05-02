@@ -88,8 +88,19 @@ export class AudioEngine {
     // A hidden <audio> element keeps the stream "alive" in some browsers
     // even when all AudioContext nodes are connected.
     const sink = new Audio();
+    sink.autoplay = true;
+    sink.playsInline = true; // Required for iOS background audio
     sink.srcObject = stream;
-    sink.muted = true; // Actual sound goes through AudioContext
+    
+    // WebRTC Backgrounding Hack for Mobile:
+    // iOS Safari and Android Chrome will suspend the WebRTC connection and microphone
+    // when the app is backgrounded UNLESS an unmuted <audio> element is actively playing.
+    // Since we route actual sound through the AudioContext graph, we don't want this to be heard.
+    // Setting `muted = true` causes the OS to suspend the app in the background.
+    // Setting `muted = false` and `volume = 0` tricks the OS into keeping the microphone/connection alive.
+    sink.muted = false;
+    sink.volume = 0;
+    
     sink.play().catch(e => console.warn('[AudioEngine] Sink play failed:', e));
 
     const source = this.audioCtx!.createMediaStreamSource(stream);
