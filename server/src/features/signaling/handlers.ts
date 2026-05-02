@@ -158,31 +158,39 @@ export const registerHandlers = (io: Server, socket: Socket) => {
     }
   });
 
-  socket.on(SOCKET_EVENTS.SIGNAL, (payload: { to: string, signal: any }) => {
+  // Signal events carry peer-to-peer WebRTC SDP/ICE data.
+  // The `to` field is the target peer's socket ID — the server must route
+  // these directly (unicast), never broadcast.
+  // We use `unknown` for the signal payload — the server is a relay and
+  // doesn't need to inspect the SDP/ICE contents (DOM types are unavailable in Node).
+  socket.on(SOCKET_EVENTS.SIGNAL, (payload: { to: string; signal: unknown }) => {
     socket.to(payload.to).emit(SOCKET_EVENTS.SIGNAL, {
       from: socket.id,
-      signal: payload.signal
+      signal: payload.signal,
     });
   });
 
-  socket.on(SOCKET_EVENTS.BACKCHANNEL, (payload: { signal: any }) => {
+  // Backchannel signals are also peer-to-peer WebRTC (SDP/ICE).
+  // The client sends a `to` field identifying the exact target peer.
+  // We still gate on isTeamAdmin so only authorised senders can use this,
+  // but we route to the specific `to` peer rather than broadcasting.
+  socket.on(SOCKET_EVENTS.BACKCHANNEL, (payload: { to: string; signal: unknown }) => {
     const roomId = roomManager.getRoomIdByUser(socket.id);
     if (!roomId) return;
-    
+
     const room = roomManager.getRoom(roomId);
     if (!room) return;
 
     const user = room.members.find(m => m.id === socket.id);
     if (!user || !user.isTeamAdmin) return;
 
-    // Send only to other Team Admins and the Host
-    room.members.forEach(member => {
-      if (member.id !== socket.id && (member.isTeamAdmin || member.id === room.hostId)) {
-        io.to(member.id).emit(SOCKET_EVENTS.BACKCHANNEL, {
-          from: socket.id,
-          signal: payload.signal
-        });
-      }
+    // Verify the target is a valid member (Team Admin or Host) before forwarding
+    const target = room.members.find(m => m.id === payload.to);
+    if (!target || (!target.isTeamAdmin && target.id !== room.hostId)) return;
+
+    socket.to(payload.to).emit(SOCKET_EVENTS.BACKCHANNEL, {
+      from: socket.id,
+      signal: payload.signal,
     });
   });
 

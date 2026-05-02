@@ -237,7 +237,7 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
       if (member.id !== socket.id && (member.isTeamAdmin || member.id === room.hostId)) {
         let bc = bcs.current.get(member.id);
         if (!bc) {
-          bc = createPeerConnection(member.id, socket.id! > member.id, true, localStreamRef.current);
+          bc = createPeerConnection(member.id, socket.id! > member.id, true);
         }
 
         const senders = bc.getSenders();
