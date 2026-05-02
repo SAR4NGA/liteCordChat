@@ -22,6 +22,7 @@ interface SocketState {
   denyKnock: (guestId: string) => void;
   toggleLock: () => void;
   burnRoom: () => void;
+  leaveRoom: () => void;
   pendingKnocks: Array<{ id: string, name: string, avatar?: string }>;
   knockStatus: 'idle' | 'pending' | 'approved' | 'denied';
   knockToken: string | null;
@@ -66,7 +67,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       }));
     });
 
-    socket.on(SOCKET_EVENTS.USER_LEFT, ({ userId, members }: { userId: string, members: User[] }) => {
+    socket.on(SOCKET_EVENTS.USER_LEFT, ({ members }: { userId: string, members: User[] }) => {
       set((state) => ({
         room: state.room ? { ...state.room, members } : null
       }));
@@ -154,7 +155,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     }
   },
 
-  createRoom: (userName, avatar, roomId?: string) => {
+  createRoom: (userName, avatar, roomId) => {
     get().connect();
     const { socket } = get();
     if (socket) {
@@ -224,5 +225,24 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     if (socket) {
       socket.emit(SOCKET_EVENTS.BURN_ROOM);
     }
-  }
+  },
+
+  leaveRoom: () => {
+    const { socket, localStream } = get();
+    // Stop all local media tracks so the mic is released immediately
+    localStream?.getTracks().forEach(t => t.stop());
+    // Clear session so we don't auto-rejoin on next navigation
+    sessionStore.clear();
+    // Null the socket in the store FIRST so the 'disconnect' event handler's
+    // `if (get().socket)` guard returns early and doesn't run double cleanup.
+    set({ socket: null, room: null, localStream: null, pendingKnocks: [], knockStatus: 'idle', knockToken: null });
+    // Disconnect after nulling so the 'disconnect' event fires with socket already null.
+    socket?.disconnect();
+  },
 }));
+
+/**
+ * Imperative getter for socket store state — safe to call inside callbacks,
+ * async functions, and event handlers (not a React hook).
+ */
+export const getSocketState = useSocketStore.getState;

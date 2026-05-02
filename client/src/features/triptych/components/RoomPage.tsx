@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useSocketStore } from '../../../store/useSocketStore';
+import { useSocketStore, getSocketState } from '../../../store/useSocketStore';
 import { useMediaStream } from '../../voice/hooks/useMediaStream';
 import { useWebRTC } from '../../voice/hooks/useWebRTC';
 import { useDataMonitor } from '../../voice/hooks/useDataMonitor';
@@ -26,7 +26,7 @@ function MicVolumeIcon({ peerId: _peerId, isMuted }: { peerId: string; isMuted: 
 
 export function RoomPage() {
   const { roomId: urlRoomId } = useParams<{ roomId: string }>();
-  const { room, socket, joinRoom, toggleMute: toggleSocketMute, pendingKnocks, approveKnock, denyKnock, toggleLock, burnRoom, moveArea, localStream, setLocalStream, lastError, clearError } = useSocketStore();
+  const { room, socket, joinRoom, toggleMute: toggleSocketMute, pendingKnocks, approveKnock, denyKnock, toggleLock, burnRoom, leaveRoom, moveArea, localStream, setLocalStream, lastError, clearError } = useSocketStore();
   const { startStream } = useMediaStream();
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [isBackchannelActive, setIsBackchannelActive] = useState(false);
@@ -110,6 +110,12 @@ export function RoomPage() {
     }
   };
 
+  const handleLeaveRoom = useCallback(() => {
+    audioEngine.stop();
+    leaveRoom();
+    navigate('/');
+  }, [leaveRoom, navigate]);
+
   const areas: Array<{ id: 'lobby' | 'team-1' | 'team-2', label: string }> = [
     { id: 'lobby', label: 'Lobby' },
     { id: 'team-1', label: 'Team Alpha' },
@@ -118,9 +124,17 @@ export function RoomPage() {
 
   const handleRemoteStream = useCallback(async (peerId: string, stream: MediaStream) => {
     console.log(`[RoomPage] Remote stream from ${peerId} — ${stream.getAudioTracks().length} audio tracks`);
-    // Start muted — the area-gating effect will unmute if this peer is in the same area.
-    // This prevents audio bleed during the brief window before gating runs.
-    await audioEngine.setupPeer(peerId, stream, 'team', true);
+    // Compute the correct initial mute state NOW using live store state rather
+    // than always starting muted. This avoids the race where the area-gating
+    // effect fires before room state is ready and leaves the peer silent forever.
+    const storeState = getSocketState();
+    const myUser = storeState.room?.members.find(m => m.id === storeState.socket?.id);
+    const peer   = storeState.room?.members.find(m => m.id === peerId);
+    // Default to NOT muted when we don't have enough info yet — better to
+    // briefly hear someone in the wrong area than to permanently silence them.
+    const startMuted = myUser && peer ? peer.roomArea !== myUser.roomArea : false;
+    console.log(`[RoomPage] setupPeer ${peerId} startMuted=${startMuted} (myArea=${myUser?.roomArea} peerArea=${peer?.roomArea})`);
+    await audioEngine.setupPeer(peerId, stream, 'team', startMuted);
     setRemoteStreams(prev => {
       const next = new Map(prev);
       next.set(peerId, stream);
@@ -220,10 +234,11 @@ export function RoomPage() {
     audioEngine.resume();
   }, [remoteStreams, room, currentUser]);
 
-  // Cleanup AudioEngine on unmount
+  // Cleanup AudioEngine on unmount — call stop() to also close the AudioContext
+  // so a fresh one is created next time (avoids reusing a stale suspended context).
   useEffect(() => {
     return () => {
-      audioEngine.removeAllPeers();
+      audioEngine.stop();
     };
   }, []);
 
@@ -318,6 +333,16 @@ export function RoomPage() {
               {isMuted ? 'mic_off' : 'mic'}
             </span>
             {isMuted ? 'UNMUTE' : 'MUTE'}
+          </button>
+
+          <button
+            onClick={handleLeaveRoom}
+            className="danger"
+            title="Leave Room"
+            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <span className="material-icons-outlined">logout</span>
+            LEAVE
           </button>
 
           {socket?.id === room.hostId && (
