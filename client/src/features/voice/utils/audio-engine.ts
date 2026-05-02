@@ -10,6 +10,10 @@ export class AudioEngine {
   private teamGain: GainNode | null = null;
   private masterGain: GainNode | null = null;
 
+  // Static noise nodes — merged in from StaticFadeEngine so both share one AudioContext
+  private noiseNode: AudioBufferSourceNode | null = null;
+  private noiseGain: GainNode | null = null;
+
   private init() {
     if (this.audioCtx) return;
     console.log('[AudioEngine] Initializing AudioContext');
@@ -23,6 +27,23 @@ export class AudioEngine {
 
     this.backchannelGain = this.audioCtx.createGain();
     this.backchannelGain.connect(this.masterGain);
+
+    // Static-noise sub-graph (gain starts at 0 — silent until setFadeLevel is called)
+    this.noiseGain = this.audioCtx.createGain();
+    this.noiseGain.gain.value = 0;
+    this.noiseGain.connect(this.audioCtx.destination);
+
+    const bufferSize = 2 * this.audioCtx.sampleRate;
+    const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+    this.noiseNode = this.audioCtx.createBufferSource();
+    this.noiseNode.buffer = noiseBuffer;
+    this.noiseNode.loop = true;
+    this.noiseNode.connect(this.noiseGain);
+    this.noiseNode.start();
   }
 
   /**
@@ -30,7 +51,7 @@ export class AudioEngine {
    * Returns a Promise so callers can `await` it before setting up nodes.
    */
   public resume(): Promise<void> {
-    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+    if (this.audioCtx && this.audioCtx.state !== 'running') {
       return this.audioCtx.resume();
     }
     return Promise.resolve();
@@ -49,6 +70,8 @@ export class AudioEngine {
       this.masterGain = null;
       this.teamGain = null;
       this.backchannelGain = null;
+      this.noiseGain = null;
+      this.noiseNode = null;
       this.init();
       await this.resume();
     }
@@ -98,9 +121,9 @@ export class AudioEngine {
   public removePeer(peerId: string) {
     const nodes = this.peerNodes.get(peerId);
     if (nodes) {
-      try { nodes.source.disconnect(); } catch { }
-      try { nodes.panner.disconnect(); } catch { }
-      try { nodes.gain.disconnect(); } catch { }
+      try { nodes.source.disconnect(); } catch (e) { console.warn(`[AudioEngine] source.disconnect error for ${peerId}:`, e); }
+      try { nodes.panner.disconnect(); } catch (e) { console.warn(`[AudioEngine] panner.disconnect error for ${peerId}:`, e); }
+      try { nodes.gain.disconnect(); } catch (e) { console.warn(`[AudioEngine] gain.disconnect error for ${peerId}:`, e); }
       nodes.sink.srcObject = null;
       nodes.sink.remove();
       this.peerNodes.delete(peerId);
@@ -127,12 +150,34 @@ export class AudioEngine {
     this.teamGain.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.1);
   }
 
+  /** Static noise level for connection-degradation visual/audio effect. Level 0.0–1.0. */
+  public setFadeLevel(level: number) {
+    if (!this.audioCtx) this.init();
+    this.resume().catch(e => console.warn('[AudioEngine] resume error in setFadeLevel:', e));
+    if (this.noiseGain && this.audioCtx) {
+      const targetGain = level * 0.05; // Keep static subtle
+      this.noiseGain.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.1);
+    }
+  }
+
   public removeAllPeers() {
     this.peerNodes.forEach((_, id) => this.removePeer(id));
   }
 
   public stop() {
     this.removeAllPeers();
+    if (this.noiseNode) {
+      try { this.noiseNode.stop(); } catch (e) { console.warn('[AudioEngine] noiseNode.stop error:', e); }
+      this.noiseNode = null;
+    }
+    if (this.audioCtx && this.audioCtx.state !== 'closed') {
+      this.audioCtx.close().catch(e => console.warn('[AudioEngine] close() error:', e));
+    }
+    this.audioCtx = null;
+    this.masterGain = null;
+    this.teamGain = null;
+    this.backchannelGain = null;
+    this.noiseGain = null;
   }
 }
 
