@@ -89,7 +89,7 @@ export class AudioEngine {
     // even when all AudioContext nodes are connected.
     const sink = new Audio();
     sink.autoplay = true;
-    (sink as HTMLAudioElement & { playsInline?: boolean }).playsInline = true; // Required for iOS background audio
+    (sink as any).playsInline = true; // Required for iOS background audio
     sink.srcObject = stream;
     
     // WebRTC Backgrounding Hack for Mobile:
