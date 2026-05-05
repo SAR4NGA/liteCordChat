@@ -48,13 +48,20 @@ export class AudioEngine {
 
   /**
    * Resume the AudioContext (required by browser autoplay policy).
-   * Returns a Promise so callers can `await` it before setting up nodes.
+   * Lazily initializes the context if it doesn't exist yet — important so that
+   * click handlers fired BEFORE any peer arrives still consume the user gesture
+   * and put the context into a running state. Otherwise the context is created
+   * later inside setupPeer() with no recent gesture and stays suspended forever.
    */
-  public resume(): Promise<void> {
+  public async resume(): Promise<void> {
+    if (!this.audioCtx) this.init();
     if (this.audioCtx && this.audioCtx.state !== 'running') {
-      return this.audioCtx.resume();
+      try {
+        await this.audioCtx.resume();
+      } catch (e) {
+        console.warn('[AudioEngine] resume() rejected:', e);
+      }
     }
-    return Promise.resolve();
   }
 
   public async setupPeer(peerId: string, stream: MediaStream, type: 'team' | 'backchannel', startMuted = false) {
@@ -65,7 +72,10 @@ export class AudioEngine {
     await this.resume();
 
     // If AudioContext was closed (e.g. after stop()), re-init.
+    // All previously-tracked peer nodes reference the dead context, so clear them
+    // wholesale; otherwise they stay silent forever with no way to recover.
     if (this.audioCtx!.state === 'closed') {
+      this.removeAllPeers();
       this.audioCtx = null;
       this.masterGain = null;
       this.teamGain = null;
