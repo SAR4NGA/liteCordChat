@@ -28,11 +28,17 @@ export function Home() {
     }
   }, [room, navigate]);
 
+  const MIC_DENIED_MSG = 'Microphone access is required for voice rooms. Please grant the permission in your browser and try again.';
+
   const handleCreateRoom = async () => {
     if (!userName.trim()) return setError('Please enter your name first!');
     setError(null);
     const avatar = generateGhostAvatar();
     const stream = await startStream();
+    if (!stream) {
+      setError(MIC_DENIED_MSG);
+      return;
+    }
     setLocalStream(stream);
     sessionStore.save({ roomId: createRoomId, userName, avatar });
     createRoom(userName, avatar, createRoomId || undefined);
@@ -44,6 +50,10 @@ export function Home() {
     setError(null);
     const avatar = generateGhostAvatar();
     const stream = await startStream();
+    if (!stream) {
+      setError(MIC_DENIED_MSG);
+      return;
+    }
     setLocalStream(stream);
     sessionStore.save({ roomId: roomIdInput, userName, avatar });
     joinRoom(roomIdInput, userName, avatar);
