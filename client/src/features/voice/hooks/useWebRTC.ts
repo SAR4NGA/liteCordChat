@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSocketStore } from '../../../store/useSocketStore';
 import { SOCKET_EVENTS, User } from '@shared/index';
+import { ICE_SERVERS } from '../../../config';
 
 interface UseWebRTCOptions {
   localStream: MediaStream | null;
@@ -9,19 +10,16 @@ interface UseWebRTCOptions {
   onBackchannelStream?: (peerId: string, stream: MediaStream) => Promise<void> | void;
 }
 
-const iceServers = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-];
-
 export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchannelStream }: UseWebRTCOptions) => {
   const { socket, room } = useSocketStore();
   const pcs = useRef<Map<string, RTCPeerConnection>>(new Map());
   const bcs = useRef<Map<string, RTCPeerConnection>>(new Map()); // Backchannel connections
   const makingOffer = useRef<Map<string, boolean>>(new Map());
   const ignoreOffer = useRef<Map<string, boolean>>(new Map());
+  // Candidates that arrive before remoteDescription has been set must be queued
+  // and replayed afterwards — otherwise addIceCandidate throws and the candidate
+  // is silently dropped, sometimes leaving the connection unable to establish.
+  const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
 
   // Use a ref for socket so PC event handlers always access the live socket
   // without needing to be recreated every time the socket reference changes.
@@ -35,12 +33,12 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
   useEffect(() => { onRemoteStreamRef.current = onRemoteStream; }, [onRemoteStream]);
   useEffect(() => { onBackchannelStreamRef.current = onBackchannelStream; }, [onBackchannelStream]);
 
-  const createPeerConnection = useCallback((peerId: string, isPolite: boolean, isBackchannel = false) => {
+  const createPeerConnection = useCallback((peerId: string, isImpolite: boolean, isBackchannel = false) => {
     const targetMap = isBackchannel ? bcs : pcs;
     if (targetMap.current.has(peerId)) return targetMap.current.get(peerId)!;
 
-    console.log(`[WebRTC${isBackchannel ? '-BC' : ''}] Creating PC with ${peerId} (polite=${isPolite})`);
-    const pc = new RTCPeerConnection({ iceServers });
+    console.log(`[WebRTC${isBackchannel ? '-BC' : ''}] Creating PC with ${peerId} (impolite=${isImpolite})`);
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     targetMap.current.set(peerId, pc);
 
     pc.onicecandidate = ({ candidate }) => {
@@ -78,10 +76,18 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
 
     pc.onconnectionstatechange = () => {
       console.log(`[WebRTC${isBackchannel ? '-BC' : ''}] Connection state with ${peerId}: ${pc.connectionState}`);
+      if (pc.connectionState === 'failed') {
+        console.warn(`[WebRTC${isBackchannel ? '-BC' : ''}] Connection failed with ${peerId} — attempting ICE restart`);
+        try { pc.restartIce(); } catch (e) { console.error('[WebRTC] restartIce error:', e); }
+      }
     };
 
     pc.oniceconnectionstatechange = () => {
       console.log(`[WebRTC${isBackchannel ? '-BC' : ''}] ICE state with ${peerId}: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === 'failed') {
+        console.warn(`[WebRTC${isBackchannel ? '-BC' : ''}] ICE failed with ${peerId} — attempting restart`);
+        try { pc.restartIce(); } catch (e) { console.error('[WebRTC] restartIce error:', e); }
+      }
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         // Boost Opus audio quality to 96 kbps (default ~32 kbps is thin)
         pc.getSenders().forEach(sender => {
@@ -114,6 +120,21 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
   useEffect(() => {
     if (!socket || !socket.id) return;
 
+    const flushPendingCandidates = async (pc: RTCPeerConnection, key: string) => {
+      const queued = pendingCandidates.current.get(key);
+      if (!queued || queued.length === 0) return;
+      pendingCandidates.current.delete(key);
+      for (const candidate of queued) {
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch (e) {
+          if (!ignoreOffer.current.get(key)) {
+            console.warn('[WebRTC] Buffered ICE candidate failed:', e);
+          }
+        }
+      }
+    };
+
     const processSignal = async (
       pc: RTCPeerConnection,
       from: string,
@@ -121,6 +142,7 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
       event: string,
       isBackchannel: boolean,
     ) => {
+      const key = `${isBackchannel ? 'bc-' : ''}${from}`;
       try {
         if (signal.description) {
           const description = signal.description as RTCSessionDescriptionInit;
@@ -128,26 +150,29 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
             description.type === 'offer' &&
             (makingOffer.current.get(from) || pc.signalingState !== 'stable');
 
-          // For collision resolution we check the right map
-          const targetMap = isBackchannel ? bcs : pcs;
           const isImpolite = socket.id! > from;
-          ignoreOffer.current.set(
-            `${isBackchannel ? 'bc-' : ''}${from}`,
-            !targetMap.current.has(from) || (offerCollision && isImpolite),
-          );
+          ignoreOffer.current.set(key, offerCollision && isImpolite);
 
-          if (ignoreOffer.current.get(`${isBackchannel ? 'bc-' : ''}${from}`)) return;
+          if (ignoreOffer.current.get(key)) return;
 
           await pc.setRemoteDescription(description);
+          await flushPendingCandidates(pc, key);
           if (description.type === 'offer') {
             await pc.setLocalDescription();
             socket.emit(event, { to: from, signal: { description: pc.localDescription } });
           }
         } else if (signal.candidate) {
+          if (!pc.remoteDescription) {
+            // Buffer until setRemoteDescription has been called for this peer.
+            const queue = pendingCandidates.current.get(key) || [];
+            queue.push(signal.candidate);
+            pendingCandidates.current.set(key, queue);
+            return;
+          }
           try {
             await pc.addIceCandidate(signal.candidate);
           } catch (err) {
-            if (!ignoreOffer.current.get(`${isBackchannel ? 'bc-' : ''}${from}`)) {
+            if (!ignoreOffer.current.get(key)) {
               console.error(`[WebRTC] ICE candidate error from ${from}:`, err);
             }
           }
@@ -198,6 +223,7 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
         pcs.current.delete(peerId);
         makingOffer.current.delete(peerId);
         ignoreOffer.current.delete(peerId);
+        pendingCandidates.current.delete(peerId);
         onPeerLeft(peerId);
       }
     });
@@ -205,6 +231,7 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
       if (!memberIds.has(peerId)) {
         pc.close();
         bcs.current.delete(peerId);
+        pendingCandidates.current.delete(`bc-${peerId}`);
       }
     });
   }, [room, onPeerLeft]);
