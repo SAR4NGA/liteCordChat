@@ -140,11 +140,14 @@ export const registerHandlers = (io: Server, socket: Socket) => {
     const result = roomManager.burnRoom(socket.id);
     if (!result) return;
 
-    const { roomId, members } = result;
+    const { roomId } = result;
     io.to(roomId).emit(SOCKET_EVENTS.ROOM_BURNED);
-    
-    // We should ideally force sockets to leave the room in Socket.io registry too
-    // But since the room state is gone, and we emit ROOM_BURNED, clients will redirect.
+
+    // Force every socket out of the io room namespace. Without this, sockets
+    // remain joined to the room id in Socket.io's internal registry — so any
+    // future room created with the same id would leak broadcasts to ghosts.
+    io.in(roomId).socketsLeave(roomId);
+
     console.log(`Room burned: ${roomId} by host ${socket.id}`);
   });
 

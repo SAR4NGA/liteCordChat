@@ -37,6 +37,14 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) return null;
 
+    // Idempotent join: if this socket is already a member, return the current
+    // room state without duplicating the entry. Without this guard, a retried
+    // JOIN_ROOM (e.g. due to a race or a flaky network) creates a phantom
+    // duplicate in members[] which then never gets cleaned up.
+    if (room.members.some(m => m.id === userId)) {
+      return room;
+    }
+
     const user: User = {
       id: userId,
       name: userName,
