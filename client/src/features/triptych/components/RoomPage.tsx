@@ -46,18 +46,53 @@ export function RoomPage() {
     const saved = sessionStore.load();
     const targetRoomId = urlRoomId || saved?.roomId;
 
-    if (saved && targetRoomId) {
-      isRejoiningRef.current = true;
-      setIsRejoining(true);
-      startStream().then(stream => {
-        setLocalStream(stream);
-        joinRoom(targetRoomId, saved.userName, saved.avatar, saved.token);
-      });
-    } else {
+    if (!saved || !targetRoomId) {
       navigate('/');
+      return;
     }
+
+    isRejoiningRef.current = true;
+    setIsRejoining(true);
+
+    const giveUp = (reason: string) => {
+      console.warn(`[RoomPage] Rejoin failed: ${reason}`);
+      isRejoiningRef.current = false;
+      setIsRejoining(false);
+      sessionStore.clear();
+      navigate('/');
+    };
+
+    // Hard timeout — the server may never respond (connectivity loss, dropped
+    // packets) and without this the user is stuck on the REJOINING screen.
+    const timeoutId = setTimeout(() => giveUp('timeout waiting for server'), 10_000);
+
+    startStream().then(stream => {
+      if (!stream) {
+        clearTimeout(timeoutId);
+        giveUp('microphone access denied');
+        return;
+      }
+      setLocalStream(stream);
+      joinRoom(targetRoomId, saved.userName, saved.avatar, saved.token);
+    });
+
+    return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // If the server rejects our rejoin (room not found, invalid token, etc.) the
+  // store sets lastError but room stays null. Without this, we sit forever on
+  // the REJOINING screen because isRejoiningRef.current is only cleared when
+  // room becomes truthy.
+  useEffect(() => {
+    if (isRejoiningRef.current && lastError) {
+      console.warn('[RoomPage] Rejoin aborted by server error:', lastError);
+      isRejoiningRef.current = false;
+      setIsRejoining(false);
+      sessionStore.clear();
+      navigate('/');
+    }
+  }, [lastError, navigate]);
 
   // Once room loads after rejoin, clear the rejoining flag.
   // Also update sessionStorage with the actual roomId (important for hosts
