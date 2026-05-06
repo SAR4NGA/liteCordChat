@@ -39,7 +39,15 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   knockStatus: 'idle',
   knockToken: null,
 
-  setLocalStream: (localStream) => set({ localStream }),
+  setLocalStream: (localStream) => {
+    // Stop any previous stream's tracks so we don't leak microphone access
+    // when the stream is replaced (e.g. after a reconnect with a fresh stream).
+    const previous = get().localStream;
+    if (previous && previous !== localStream) {
+      previous.getTracks().forEach(t => t.stop());
+    }
+    set({ localStream });
+  },
   clearError: () => set({ lastError: null }),
 
   connect: () => {
@@ -126,14 +134,16 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     // When the underlying transport drops (network blip / server restart),
     // clear room state so the UI doesn't get stuck in a ghost voice session.
+    // We DO NOT stop the local stream here — a transient disconnect would
+    // otherwise force the user to grant mic permission again on rejoin.
+    // The stream is stopped on deliberate leave (leaveRoom) or when replaced
+    // via setLocalStream.
     socket.on('disconnect', (reason) => {
       console.warn('[Socket] Disconnected:', reason);
       // Only clear room if it wasn't a deliberate client-side disconnect.
       // (Our disconnect() method sets socket=null before this fires.)
       if (get().socket) {
-        const ls = get().localStream;
-        ls?.getTracks().forEach(t => t.stop());
-        set({ localStream: null, room: null, pendingKnocks: [], knockStatus: 'idle', knockToken: null });
+        set({ room: null, pendingKnocks: [], knockStatus: 'idle', knockToken: null });
       }
     });
 
