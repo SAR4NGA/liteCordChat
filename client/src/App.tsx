@@ -27,7 +27,7 @@ function App() {
         letterSpacing: '0.05em',
         opacity: 0.8
       }}>
-        V 2.0
+        V 2.02
       </div>
       <Routes>
         <Route path="/" element={<Home />} />
