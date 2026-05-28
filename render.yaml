@@ -6,7 +6,7 @@ services:
     plan: free
     # No rootDir — npm install must run from the repo root so the npm workspace
     # can resolve @litecordchat/shared. rootDir: server would break that.
-    buildCommand: npm install && npm run build:server
+    buildCommand: npm install --include=dev && npm run build:server
     startCommand: node server/dist/index.js
     healthCheckPath: /health
     envVars:
