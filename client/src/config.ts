@@ -26,23 +26,23 @@ const buildIceServers = (): RTCIceServer[] => {
     : [
         {
           urls: 'turn:openrelay.metered.ca:80',
-          username: '042b7eafed0e0c838156f12f',
-          credential: 'RTOHU11Okf2QsG5A',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
         },
         {
           urls: 'turn:openrelay.metered.ca:443',
-          username: '042b7eafed0e0c838156f12f',
-          credential: 'RTOHU11Okf2QsG5A',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
         },
         {
           urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-          username: '042b7eafed0e0c838156f12f',
-          credential: 'RTOHU11Okf2QsG5A',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
         },
         {
           urls: 'turns:openrelay.metered.ca:443',
-          username: '042b7eafed0e0c838156f12f',
-          credential: 'RTOHU11Okf2QsG5A',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
         }
       ];
 

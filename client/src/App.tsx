@@ -36,7 +36,7 @@ function App() {
         letterSpacing: '0.05em',
         opacity: 0.8
       }}>
-        C: 2.03 | S: {serverVersion}
+        C: 2.04 | S: {serverVersion}
       </div>
       <Routes>
         <Route path="/" element={<Home />} />
