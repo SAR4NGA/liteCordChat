@@ -4,9 +4,10 @@ services:
     env: node
     region: singapore        # closest Render free region to South Asia
     plan: free
-    rootDir: server
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    # No rootDir — npm install must run from the repo root so the npm workspace
+    # can resolve @litecordchat/shared. rootDir: server would break that.
+    buildCommand: npm install && npm run build:server
+    startCommand: node server/dist/index.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
