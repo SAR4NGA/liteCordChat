@@ -5,7 +5,7 @@ import { SOCKET_EVENTS } from '@shared/index';
 import { registerHandlers } from './features/signaling/handlers';
 
 const app = express();
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: '2.03' }));
 export const httpServer = createServer(app);
 export const io = new Server(httpServer, {
   cors: {

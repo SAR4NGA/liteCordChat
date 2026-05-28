@@ -1,17 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useSocketStore } from './store/useSocketStore';
 import { Home } from './features/gatekeeper/components/Home';
 import { JoinInvite } from './features/gatekeeper/components/JoinInvite';
 import { RoomPage } from './features/triptych/components/RoomPage';
+import { SERVER_URL } from './config';
 
 function App() {
   const { connect, disconnect } = useSocketStore();
+  const [serverVersion, setServerVersion] = useState<string>('...');
 
   useEffect(() => {
     connect();
     return () => disconnect();
   }, [connect, disconnect]);
+
+  useEffect(() => {
+    fetch(`${SERVER_URL}/health`)
+      .then(res => res.json())
+      .then(data => setServerVersion(data.version || '?'))
+      .catch(() => setServerVersion('error'));
+  }, []);
 
   return (
     <>
@@ -27,7 +36,7 @@ function App() {
         letterSpacing: '0.05em',
         opacity: 0.8
       }}>
-        V 2.02
+        C: 2.03 | S: {serverVersion}
       </div>
       <Routes>
         <Route path="/" element={<Home />} />
