@@ -41,10 +41,18 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     targetMap.current.set(peerId, pc);
 
+    const gathered = new Set<string>();
     pc.onicecandidate = ({ candidate }) => {
       if (candidate && socketRef.current) {
+        const typ = (candidate.candidate.match(/typ (\w+)/) || [])[1];
+        if (typ) gathered.add(typ);
         const event = isBackchannel ? SOCKET_EVENTS.BACKCHANNEL : SOCKET_EVENTS.SIGNAL;
         socketRef.current.emit(event, { to: peerId, signal: { candidate } });
+      } else if (!candidate && gathered.size) {
+        console.log(`[WebRTC${isBackchannel ? '-BC' : ''}] ICE candidates gathered for ${peerId}: ${[...gathered].join(', ')}`);
+        if (!gathered.has('relay')) {
+          console.warn(`[WebRTC${isBackchannel ? '-BC' : ''}] No relay candidate — TURN may not be reachable`);
+        }
       }
     };
 
@@ -85,7 +93,7 @@ export const useWebRTC = ({ localStream, onRemoteStream, onPeerLeft, onBackchann
     pc.oniceconnectionstatechange = () => {
       console.log(`[WebRTC${isBackchannel ? '-BC' : ''}] ICE state with ${peerId}: ${pc.iceConnectionState}`);
       if (pc.iceConnectionState === 'failed') {
-        console.warn(`[WebRTC${isBackchannel ? '-BC' : ''}] ICE failed with ${peerId} — attempting restart`);
+        console.warn(`[WebRTC${isBackchannel ? '-BC' : ''}] ICE failed with ${peerId} — TURN server may be unreachable or credentials invalid`);
         try { pc.restartIce(); } catch (e) { console.error('[WebRTC] restartIce error:', e); }
       }
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
